@@ -1,0 +1,2295 @@
+{
+  "info": {
+    "_postman_id": "7c1f4a52-0d3b-4e86-9a71-6b2f0c5d41ae",
+    "name": "D1 API",
+    "description": "Functional suite for the D1 API across two stacks that run side by side against the same tables:\n\n- **{{claimsApi}}** (/api/d1claims) -- `D1.REST.Router`, from the standalone `claims-api/` tree. No production: a web application and a dispatch class are the whole runtime. Reimplements the eleven endpoints that never needed one, all of which answer straight from IRIS's own tables.\n- **{{prodApi}}** (/api/d1) -- `D1.Mock.API.D1API`, the ORIGINAL demo, unchanged. Still serves all nineteen endpoints through `D1.Production`, and is the only route to the seven that stay there -- the five with a business process, plus /admission and /billing, which need the production's configured HIS adapter.\n\nFolders 01-03 exercise the eleven against D1.REST. Folder 04 spot-checks the seven the original keeps to itself.\n\n**Run the folders in order.** Every assertion is pinned to the values `D1.Mock.Data.ClaimLoader` seeds, request 1 reseeds them, and the Writes folder mutates the worklists that the Reads folder asserts on. Because both stacks share the tables, running this suite also moves state the original production would see.\n\nFolder 04 additionally needs D1.Production running and the mock HIS reachable. Folders 00-03 pass against a bare namespace once the web application exists -- `Do ##class(D1.REST.Router).Install()` -- because nothing they touch leaves the instance.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "basic",
+    "basic": [
+      {
+        "key": "username",
+        "value": "{{username}}",
+        "type": "string"
+      },
+      {
+        "key": "password",
+        "value": "{{password}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Runs for every request in the collection.",
+          "pm.test('responds with JSON', function () {",
+          "    pm.expect(pm.response.headers.get('Content-Type') || '').to.include('json');",
+          "    pm.response.json();",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "00 Setup",
+      "description": "Reseed the demo dataset. Run this first -- every assertion below is pinned to these values.",
+      "item": [
+        {
+          "name": "Reset and reseed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "pm.test('reseeded', () => pm.expect(b.response_message).to.include('reseeded'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/reset",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "reset"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reseed\": \"1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Wipes the claim tables and reloads the demo dataset. Every later assertion in this collection is pinned to those seeded values, so run this first."
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Claims API - reads",
+      "description": "IRIS-only reads served without a production. Run before 02.",
+      "item": [
+        {
+          "name": "Local Patient - by HN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "const p = b.patient[0].patient_info;",
+                  "pm.test('resolves HN000001', () => pm.expect(p.hospital_number).to.eql(pm.environment.get('hn1')));",
+                  "pm.test('is Somchai Sukjai', () => { pm.expect(p.first_name).to.eql('Somchai'); pm.expect(p.last_name).to.eql('Sukjai'); });",
+                  "pm.test('carries the citizen id', () => pm.expect(p.citizen_id).to.eql('1103701234567'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/patient",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "patient"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identity_type\": \"HN\",\n  \"identity_no\": \"{{hn1}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Local Patient - by CID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "pm.test('CID resolves to the same patient', () => pm.expect(b.patient[0].patient_info.hospital_number).to.eql(pm.environment.get('hn1')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/patient",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "patient"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identity_type\": \"CID\",\n  \"identity_no\": \"1103701234567\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Local Patient - by AN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "pm.test('AN resolves to the same patient', () => pm.expect(b.patient[0].patient_info.hospital_number).to.eql(pm.environment.get('hn1')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/patient",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "patient"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identity_type\": \"AN\",\n  \"identity_no\": \"{{an1}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Local Policy",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "pm.test('echoes the claim keys', () => { pm.expect(b.hospital_number).to.eql(pm.environment.get('hn1')); pm.expect(b.admission_number).to.eql(pm.environment.get('an1')); });",
+                  "pm.test('insurer is AIA', () => pm.expect(b.insurer.company_code).to.eql('AIA'));",
+                  "pm.test('policy number matches the seed', () => pm.expect(b.policies.policy_number).to.eql(pm.environment.get('policyNumber')));",
+                  "pm.test('plan is AIA Health Gold', () => pm.expect(b.policies.plan_name).to.eql('AIA Health Gold'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/policy",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "policy"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"admission_number\": \"{{an1}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Local Benefit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "pm.test('three benefits', () => pm.expect(b.benefits_info).to.have.lengthOf(3));",
+                  "const room = b.benefits_info.find(x => x.benefit_name === 'Room and Board');",
+                  "pm.test('room and board is available with 45000 left', () => { pm.expect(room.benefit_status).to.eql('available'); pm.expect(Number(room.remaining_amount)).to.eql(45000); });",
+                  "pm.test('room and board carries its coverage item', () => pm.expect(room.coverage_items[0].coverage_code).to.eql('ROOM'));",
+                  "const icu = b.benefits_info.find(x => x.benefit_name === 'ICU');",
+                  "pm.test('ICU is exhausted', () => { pm.expect(icu.benefit_status).to.eql('exhausted'); pm.expect(Number(icu.remaining_amount)).to.eql(0); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/benefit",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "benefit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policy_number\": \"{{policyNumber}}\",\n  \"company_code\": \"{{companyCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Local PreAuth Info - July range, one patient",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "pm.test('one pre-auth in range', () => pm.expect(b.preauth).to.have.lengthOf(1));",
+                  "pm.test('is REQ000000P1, Pre-Accepted', () => { pm.expect(b.preauth[0].claim_id).to.eql('REQ000000P1'); pm.expect(b.preauth[0].claim_status).to.eql('Pre-Accepted'); });",
+                  "pm.test('case number matches the seed', () => pm.expect(b.preauth[0].claim_case_number).to.eql('PA-2026-071122'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/preauth-info",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "preauth-info"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start_reqdate\": \"2026-07-01 00:00:00\",\n  \"end_reqdate\": \"2026-07-31 23:59:59\",\n  \"identity_type\": \"HN\",\n  \"identity_no\": \"{{hn1}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Local PreAuth Info - whole window, no identity filter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "pm.test('identity_no is optional: both threads returned', () => pm.expect(b.preauth).to.have.lengthOf(2));",
+                  "pm.test('sorted by submit_date', () => pm.expect(b.preauth[0].submit_date <= b.preauth[1].submit_date).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/preauth-info",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "preauth-info"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start_reqdate\": \"2026-07-01 00:00:00\",\n  \"end_reqdate\": \"2026-10-31 23:59:59\",\n  \"identity_type\": \"HN\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "identity_type is required by the spec but identity_no is not; omitting it returns the whole date window."
+          }
+        },
+        {
+          "name": "Local Admission - by AN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "pm.test('ward and room match the seed', () => { pm.expect(b.admission.ward_number).to.eql('WARD-05'); pm.expect(b.admission.room_type).to.eql('Private Room'); });",
+                  "pm.test('bed B01', () => pm.expect(b.admission.bed_no).to.eql('B01'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/admission",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "admission"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identity_type\": \"AN\",\n  \"identity_no\": \"{{an1}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Local Admission - by HN takes the latest",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "pm.test('resolves to the seeded admission', () => pm.expect(b.admission_number).to.eql(pm.environment.get('an1')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/admission",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "admission"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identity_type\": \"HN\",\n  \"identity_no\": \"{{hn1}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A patient-level identity cannot name a single admission, so the most recent one for that patient is returned."
+          }
+        },
+        {
+          "name": "Local Discharge Info - August range",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "pm.test('one discharge in range', () => pm.expect(b.discharge).to.have.lengthOf(1));",
+                  "const d = b.discharge[0];",
+                  "pm.test('guarantee letter GCL-12345, Approved', () => { pm.expect(d.discharge_info.gl_number).to.eql('GCL-12345'); pm.expect(d.discharge_info.discharge_status).to.eql('Approved'); });",
+                  "pm.test('each row carries its own identifiers', () => pm.expect(d.insurer_info.admission_number).to.eql(pm.environment.get('an1')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/discharge-info",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "discharge-info"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start_reqdate\": \"2026-08-01 00:00:00\",\n  \"end_reqdate\": \"2026-08-31 23:59:59\",\n  \"identity_type\": \"HN\",\n  \"identity_no\": \"{{hn1}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Record List - Pre-Auth worklist",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "const row = b.record_list.find(x => x.admission_number === pm.environment.get('an2'));",
+                  "pm.test('the undecided pre-auth is on the worklist', () => pm.expect(row).to.not.be.undefined);",
+                  "pm.test('with claim_status Pre-Authorize Submitted', () => pm.expect(row.claim_status).to.eql('Pre-Authorize Submitted'));",
+                  "pm.test('the already-decided thread is absent', () => pm.expect(b.record_list.find(x => x.admission_number === pm.environment.get('an1'))).to.be.undefined);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/record-list",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "record-list"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"list_mode\": \"Pre-Auth\",\n  \"company_code\": \"{{companyCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Run before the Writes folder: patching AN2026080002 takes it off this worklist."
+          }
+        },
+        {
+          "name": "Record List - Discharge worklist",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "const row = b.record_list.find(x => x.admission_number === pm.environment.get('an2'));",
+                  "pm.test('the undecided discharge is on the worklist', () => pm.expect(row).to.not.be.undefined);",
+                  "pm.test('with discharge_status Discharge Requested', () => pm.expect(row.discharge_status).to.eql('Discharge Requested'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/record-list",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "record-list"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"list_mode\": \"Discharge\",\n  \"company_code\": \"{{companyCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Record List - All",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "pm.test('both admissions appear', () => pm.expect(b.record_list.length).to.be.at.least(2));",
+                  "const nums = b.record_list.map(x => x.admission_number);",
+                  "pm.test('unfiltered by status', () => { pm.expect(nums).to.include(pm.environment.get('an1')); pm.expect(nums).to.include(pm.environment.get('an2')); });",
+                  "const first = b.record_list.find(x => x.admission_number === pm.environment.get('an1'));",
+                  "pm.test('status keeps its stored casing, not SQLUPPER', () => pm.expect(first.discharge_status).to.eql('Approved'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/record-list",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "record-list"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"list_mode\": \"All\",\n  \"company_code\": \"{{companyCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Document Info",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "const d = b.document_info;",
+                  "pm.test('person block filled', () => { pm.expect(d.person.hospital_number).to.eql(pm.environment.get('hn1')); pm.expect(d.person.first_name).to.eql('Somchai'); });",
+                  "pm.test('claim identifiers come from preauth_info', () => pm.expect(d.person.claim_id).to.eql('REQ000000P1'));",
+                  "pm.test('policy block filled', () => pm.expect(d.policies_info.policy_number).to.eql(pm.environment.get('policyNumber')));",
+                  "pm.test('insured person resolved from insurer_id', () => pm.expect(d.insurer.insurer_id).to.eql('INS00001'));",
+                  "pm.test('billing block filled', () => { pm.expect(Number(d.billing_info.total_charge)).to.eql(150000); pm.expect(d.billing_info.currency).to.eql('THB'); });",
+                  "pm.test('authorization block filled', () => pm.expect(d.authorization.discharge_gl_number).to.eql('GCL-12345'));",
+                  "pm.test('diagnosis block filled', () => pm.expect(d.diagnosis_info[0].diagnosis_code).to.eql('E11.9'));",
+                  "pm.test('chief complaint filled', () => pm.expect(d.complaint_info.chief_complaint).to.include('Fever'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/document-info",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "document-info"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"admission_number\": \"{{an1}}\",\n  \"company_code\": \"{{companyCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Claims API - writes",
+      "description": "Mutating endpoints, each followed by the read that proves it landed.",
+      "item": [
+        {
+          "name": "Post Files - store an attachment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/files",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "files"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"crud_status\": \"0\",\n  \"hospital_number\": \"{{hn1}}\",\n  \"admission_number\": \"{{an1}}\",\n  \"source_info\": [\n    {\n      \"source_id\": \"SRC001\",\n      \"source_name\": \"discharge-summary.pdf\",\n      \"source_type\": \"pdf\",\n      \"source_file\": \"SGVsbG8gRDEgQVBJIC0tIFBvc3RtYW4gc3VpdGU=\"\n    }\n  ],\n  \"update_date\": \"2026-08-06 10:00:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "source_file is base64; the decode is chunked on 4-char boundaries so a large attachment survives the string-length limit."
+          }
+        },
+        {
+          "name": "Post Files - resend upserts rather than duplicates",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/files",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "files"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"crud_status\": \"1\",\n  \"hospital_number\": \"{{hn1}}\",\n  \"admission_number\": \"{{an1}}\",\n  \"source_info\": [\n    {\n      \"source_id\": \"SRC001\",\n      \"source_name\": \"discharge-summary-v2.pdf\",\n      \"source_type\": \"pdf\",\n      \"source_file\": \"SGVsbG8gRDEgQVBJIC0tIFBvc3RtYW4gc3VpdGU=\"\n    }\n  ],\n  \"update_date\": \"2026-08-06 10:00:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Same admission_number + source_id, so this replaces the row stored above instead of adding a second one."
+          }
+        },
+        {
+          "name": "Post Files - missing source_id is rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 400', () => pm.expect(b.response_code).to.eql('400'));",
+                  "pm.test('names the offending entry', () => pm.expect(b.response_message).to.include('source_id'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/files",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "files"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"crud_status\": \"0\",\n  \"hospital_number\": \"{{hn1}}\",\n  \"admission_number\": \"{{an1}}\",\n  \"source_info\": [\n    {\n      \"source_name\": \"no-id.pdf\",\n      \"source_type\": \"pdf\",\n      \"source_file\": \"SGVsbG8gRDEgQVBJIC0tIFBvc3RtYW4gc3VpdGU=\"\n    }\n  ],\n  \"update_date\": \"2026-08-06 10:00:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PreAuth Patch - record the insurer decision",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/preauth/patch",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "preauth",
+                "patch"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"admission_number\": \"{{an2}}\",\n  \"company_code\": \"{{companyCode}}\",\n  \"claim_case_number\": \"PA-2026-100077\",\n  \"claim_status\": \"Pre-Accepted\",\n  \"submit_date\": \"2026-10-03 10:00:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PreAuth Patch - verify the decision stuck",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "pm.test('claim_status is now Pre-Accepted', () => pm.expect(b.preauth[0].claim_status).to.eql('Pre-Accepted'));",
+                  "pm.test('case number preserved', () => pm.expect(b.preauth[0].claim_case_number).to.eql('PA-2026-100077'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/preauth-info",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "preauth-info"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start_reqdate\": \"2026-10-01 00:00:00\",\n  \"end_reqdate\": \"2026-10-31 23:59:59\",\n  \"identity_type\": \"HN\",\n  \"identity_no\": \"{{hn2}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PreAuth Patch - absent fields are left alone",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/preauth/patch",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "preauth",
+                "patch"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"admission_number\": \"{{an2}}\",\n  \"company_code\": \"{{companyCode}}\",\n  \"claim_status\": \"Accepted\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Patch semantics: an omitted optional field means 'leave alone', never 'clear'. The next request proves claim_case_number survived."
+          }
+        },
+        {
+          "name": "PreAuth Patch - verify the untouched field survived",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "pm.test('status moved on', () => pm.expect(b.preauth[0].claim_status).to.eql('Accepted'));",
+                  "pm.test('case number was NOT cleared', () => pm.expect(b.preauth[0].claim_case_number).to.eql('PA-2026-100077'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/preauth-info",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "preauth-info"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start_reqdate\": \"2026-10-01 00:00:00\",\n  \"end_reqdate\": \"2026-10-31 23:59:59\",\n  \"identity_type\": \"HN\",\n  \"identity_no\": \"{{hn2}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Discharge Patch - guarantee letter and authoriser",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/discharge/patch",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "discharge",
+                "patch"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"admission_number\": \"{{an2}}\",\n  \"company_code\": \"{{companyCode}}\",\n  \"discharge_gl_number\": \"GCL-99999\",\n  \"discharge_status\": \"Approved\",\n  \"authorization_title\": \"Ms.\",\n  \"authorization_firstname\": \"Nida\",\n  \"authorization_lastName\": \"Chaiyaphum\",\n  \"authorization_date\": \"2026-10-09 09:00:00\",\n  \"authorization_amount\": 80000,\n  \"discharge_gl_date\": \"2026-10-09 09:05:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The API that retired the synthetic gl_number: before this call the seeded discharge carries an empty gl_number and no authoriser."
+          }
+        },
+        {
+          "name": "Discharge Patch - verify the decision stuck",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "const d = b.discharge[0].discharge_info;",
+                  "pm.test('guarantee letter written', () => pm.expect(d.gl_number).to.eql('GCL-99999'));",
+                  "pm.test('status is Approved', () => pm.expect(d.discharge_status).to.eql('Approved'));",
+                  "pm.test('authorization amount written', () => pm.expect(Number(d.authorization_amount)).to.eql(80000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/discharge-info",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "discharge-info"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start_reqdate\": \"2026-10-01 00:00:00\",\n  \"end_reqdate\": \"2026-10-31 23:59:59\",\n  \"identity_type\": \"HN\",\n  \"identity_no\": \"{{hn2}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Discharge Patch - verify claim_status was synced",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "const row = b.record_list.find(x => x.admission_number === pm.environment.get('an2'));",
+                  "pm.test('discharge_status overwrote claim_status too', () => pm.expect(row.claim_status).to.eql('Approved'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/record-list",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "record-list"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"list_mode\": \"All\",\n  \"company_code\": \"{{companyCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "discharge_status also overwrites ClaimPreAuth.ClaimStatus, so that column tracks the claim's overall current stage."
+          }
+        },
+        {
+          "name": "Discharge Patch - the worklist is now clear",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "const rows = b.record_list || [];",
+                  "pm.test('nothing left awaiting a discharge decision', () => pm.expect(rows.find(x => x.admission_number === pm.environment.get('an2'))).to.be.undefined);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/record-list",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "record-list"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"list_mode\": \"Discharge\",\n  \"company_code\": \"{{companyCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Validation and errors",
+      "description": "Required fields, enums, tenancy, and in-band not-found.",
+      "item": [
+        {
+          "name": "Local Policy - admission_number is required",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', () => pm.response.to.have.status(400));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 400', () => pm.expect(b.response_code).to.eql('400'));",
+                  "pm.test('carries a message', () => pm.expect(b.response_message).to.be.a('string').and.not.empty);",
+                  "pm.test('names the field', () => pm.expect(b.response_message).to.include('admission_number'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/policy",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "policy"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Local Patient - identity_type must be in the enum",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', () => pm.response.to.have.status(400));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 400', () => pm.expect(b.response_code).to.eql('400'));",
+                  "pm.test('carries a message', () => pm.expect(b.response_message).to.be.a('string').and.not.empty);",
+                  "pm.test('lists the allowed values', () => pm.expect(b.response_message).to.include('CID'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/patient",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "patient"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identity_type\": \"XX\",\n  \"identity_no\": \"whatever\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Local Patient - body is required",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', () => pm.response.to.have.status(400));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 400', () => pm.expect(b.response_code).to.eql('400'));",
+                  "pm.test('carries a message', () => pm.expect(b.response_message).to.be.a('string').and.not.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/patient",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "patient"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Local Benefit - both keys are required",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', () => pm.response.to.have.status(400));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 400', () => pm.expect(b.response_code).to.eql('400'));",
+                  "pm.test('carries a message', () => pm.expect(b.response_message).to.be.a('string').and.not.empty);",
+                  "pm.test('names company_code', () => pm.expect(b.response_message).to.include('company_code'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/benefit",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "benefit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policy_number\": \"{{policyNumber}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Local Policy - unknown admission is a 404 envelope",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 404', () => pm.expect(b.response_code).to.eql('404'));",
+                  "pm.test('not-found is in-band, not an HTTP error', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/local/policy",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "local",
+                "policy"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"admission_number\": \"AN-DOES-NOT-EXIST\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A miss is reported in the envelope, not as an HTTP status -- the transport succeeded."
+          }
+        },
+        {
+          "name": "Document Info - another insurer cannot read the claim",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('tenancy boundary enforced', () => pm.expect(b.response_code).to.not.eql('200'));",
+                  "pm.test('no document leaked', () => pm.expect(b.document_info === undefined || b.document_info === null).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/document-info",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "document-info"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"admission_number\": \"{{an1}}\",\n  \"company_code\": \"{{otherCompanyCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "company_code is the tenancy boundary: it lives on policy_info and every read joins through it."
+          }
+        },
+        {
+          "name": "Record List - list_mode must be a known mode",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 400', () => pm.expect(b.response_code).to.eql('400'));",
+                  "pm.test('lists the valid modes', () => pm.expect(b.response_message).to.include('Pre-Auth'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/record-list",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "record-list"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"list_mode\": \"Nonsense\",\n  \"company_code\": \"{{companyCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Record List - unknown insurer gets an empty worklist",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "const rows = b.record_list;",
+                  "pm.test('empty is a valid answer, not a 404', () => pm.expect(rows === null || rows.length === 0).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/record-list",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "record-list"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"list_mode\": \"All\",\n  \"company_code\": \"ZZZ-NO-SUCH-INSURER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PreAuth Patch - unknown admission",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('not a success', () => pm.expect(b.response_code).to.not.eql('200'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/preauth/patch",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "preauth",
+                "patch"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"admission_number\": \"AN-DOES-NOT-EXIST\",\n  \"company_code\": \"{{companyCode}}\",\n  \"claim_status\": \"Accepted\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reset - reseed must be 0 or 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', () => pm.response.to.have.status(400));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 400', () => pm.expect(b.response_code).to.eql('400'));",
+                  "pm.test('carries a message', () => pm.expect(b.response_message).to.be.a('string').and.not.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{claimsApi}}/reset",
+              "host": [
+                "{{claimsApi}}"
+              ],
+              "path": [
+                "reset"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reseed\": \"2\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Production API (original stack)",
+      "description": "Spot-checks the untouched original at /api/d1, covering the seven endpoints that stay in the production: the five with a business process behind them, plus /admission and /billing, which are only service -> operation but read the HIS through an operation with a configured HTTP outbound adapter. The original also still serves the other eleven; those are exercised against D1.REST in folders 01-03 rather than twice.",
+      "item": [
+        {
+          "name": "Patient via HIS",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "pm.test('envelope carries a message', () => pm.expect(b.response_message).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{prodApi}}/patient",
+              "host": [
+                "{{prodApi}}"
+              ],
+              "path": [
+                "patient"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identity_type\": \"HN\",\n  \"identity_no\": \"{{hisHn}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Hits the ORIGINAL stack at /api/d1, which is unchanged and still serves all nineteen endpoints through D1.Production. Needs the production running and the mock HIS reachable."
+          }
+        },
+        {
+          "name": "Patient - identity_type must be in the enum",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', () => pm.response.to.have.status(400));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 400', () => pm.expect(b.response_code).to.eql('400'));",
+                  "pm.test('carries a message', () => pm.expect(b.response_message).to.be.a('string').and.not.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{prodApi}}/patient",
+              "host": [
+                "{{prodApi}}"
+              ],
+              "path": [
+                "patient"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identity_type\": \"XX\",\n  \"identity_no\": \"whatever\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Hits the ORIGINAL stack at /api/d1, which is unchanged and still serves all nineteen endpoints through D1.Production. Needs the production running and the mock HIS reachable."
+          }
+        },
+        {
+          "name": "Visit via HIS",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{prodApi}}/visit",
+              "host": [
+                "{{prodApi}}"
+              ],
+              "path": [
+                "visit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identity_type\": \"VN\",\n  \"identity_no\": \"{{hisVn}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Hits the ORIGINAL stack at /api/d1, which is unchanged and still serves all nineteen endpoints through D1.Production. Needs the production running and the mock HIS reachable."
+          }
+        },
+        {
+          "name": "Visit - VN/AN only",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', () => pm.response.to.have.status(400));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 400', () => pm.expect(b.response_code).to.eql('400'));",
+                  "pm.test('carries a message', () => pm.expect(b.response_message).to.be.a('string').and.not.empty);",
+                  "pm.test('says VN or AN', () => pm.expect(b.response_message).to.include('VN'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{prodApi}}/visit",
+              "host": [
+                "{{prodApi}}"
+              ],
+              "path": [
+                "visit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identity_type\": \"CID\",\n  \"identity_no\": \"3-1258-00558-89-8\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Hits the ORIGINAL stack at /api/d1, which is unchanged and still serves all nineteen endpoints through D1.Production. Needs the production running and the mock HIS reachable."
+          }
+        },
+        {
+          "name": "Diagnosis via HIS",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{prodApi}}/diagnosis",
+              "host": [
+                "{{prodApi}}"
+              ],
+              "path": [
+                "diagnosis"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identity_type\": \"VN\",\n  \"identity_no\": \"{{hisVn}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Hits the ORIGINAL stack at /api/d1, which is unchanged and still serves all nineteen endpoints through D1.Production. Needs the production running and the mock HIS reachable."
+          }
+        },
+        {
+          "name": "Admission via HIS",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "pm.test('admission_info returned', () => pm.expect(b.admission_info).to.be.an('object'));",
+                  "pm.test('echoes the visit number', () => pm.expect(b.visit_number).to.eql(pm.environment.get('hisVn')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{prodApi}}/admission",
+              "host": [
+                "{{prodApi}}"
+              ],
+              "path": [
+                "admission"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identity_type\": \"VN\",\n  \"identity_no\": \"{{hisVn}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Hits the ORIGINAL stack at /api/d1, which is unchanged and still serves all nineteen endpoints through D1.Production. Needs the production running and the mock HIS reachable. Only service -> operation, with no business process, but it stays in the production because the HIS read goes through an operation with a configured HTTP outbound adapter."
+          }
+        },
+        {
+          "name": "Admission - unknown episode",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 404', () => pm.expect(b.response_code).to.eql('404'));",
+                  "pm.test('says which identity missed', () => pm.expect(b.response_message).to.include('VN-DOES-NOT-EXIST'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{prodApi}}/admission",
+              "host": [
+                "{{prodApi}}"
+              ],
+              "path": [
+                "admission"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identity_type\": \"VN\",\n  \"identity_no\": \"VN-DOES-NOT-EXIST\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Hits the ORIGINAL stack at /api/d1, which is unchanged and still serves all nineteen endpoints through D1.Production. Needs the production running and the mock HIS reachable."
+          }
+        },
+        {
+          "name": "Admission - VN/AN only",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', () => pm.response.to.have.status(400));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 400', () => pm.expect(b.response_code).to.eql('400'));",
+                  "pm.test('carries a message', () => pm.expect(b.response_message).to.be.a('string').and.not.empty);",
+                  "pm.test('says VN or AN', () => pm.expect(b.response_message).to.include('VN'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{prodApi}}/admission",
+              "host": [
+                "{{prodApi}}"
+              ],
+              "path": [
+                "admission"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identity_type\": \"CID\",\n  \"identity_no\": \"3-1258-00558-89-8\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Hits the ORIGINAL stack at /api/d1, which is unchanged and still serves all nineteen endpoints through D1.Production. Needs the production running and the mock HIS reachable."
+          }
+        },
+        {
+          "name": "Billing via HIS",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));",
+                  "pm.test('billing_info returned', () => pm.expect(b.billing_info).to.be.an('object'));",
+                  "pm.test('currency comes from the operation setting, not the HIS', () => pm.expect(b.billing_info.currency).to.eql('THB'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{prodApi}}/billing",
+              "host": [
+                "{{prodApi}}"
+              ],
+              "path": [
+                "billing"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"admission_number\": \"{{hisVn}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Hits the ORIGINAL stack at /api/d1, which is unchanged and still serves all nineteen endpoints through D1.Production. Needs the production running and the mock HIS reachable. currency has no source anywhere on TrakCare's billing resources; it comes from the Billing Mapper's DefaultCurrency setting, which is editable per hospital in the Management Portal."
+          }
+        },
+        {
+          "name": "Billing - admission_number is required",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', () => pm.response.to.have.status(400));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 400', () => pm.expect(b.response_code).to.eql('400'));",
+                  "pm.test('carries a message', () => pm.expect(b.response_message).to.be.a('string').and.not.empty);",
+                  "pm.test('names the field', () => pm.expect(b.response_message).to.include('admission_number'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{prodApi}}/billing",
+              "host": [
+                "{{prodApi}}"
+              ],
+              "path": [
+                "billing"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Hits the ORIGINAL stack at /api/d1, which is unchanged and still serves all nineteen endpoints through D1.Production. Needs the production running and the mock HIS reachable."
+          }
+        },
+        {
+          "name": "Post PreAuth",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{prodApi}}/preauth",
+              "host": [
+                "{{prodApi}}"
+              ],
+              "path": [
+                "preauth"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"crud_status\": \"0\",\n  \"auth_id\": \"REQ0000POST1\",\n  \"auth_status\": \"Pre-Authorize Submitted\",\n  \"hospital_code\": \"H001\",\n  \"person\": {\n    \"hospital_number\": \"HN000009\",\n    \"visit_number\": \"VN2026110009\",\n    \"citizenId\": \"1103701234999\",\n    \"passportId\": \"\",\n    \"title\": \"Mr.\",\n    \"first_name\": \"Postman\",\n    \"last_name\": \"Tester\",\n    \"gender\": \"male\",\n    \"birthdate\": \"1990-01-01\",\n    \"age\": 36\n  },\n  \"complaint_info\": {\n    \"chief_complaint\": \"Chest pain for 1 day\"\n  },\n  \"procedure_info\": [\n    {\n      \"procedure_code\": \"93.9\",\n      \"procedure_name\": \"Chest X-Ray\"\n    }\n  ],\n  \"diagnosis\": [\n    {\n      \"diagnosis_type\": \"PRIMARY\",\n      \"diagnosis_code\": \"I20.9\",\n      \"diagnosis_name\": \"Angina pectoris, unspecified\"\n    }\n  ],\n  \"insurer\": {\n    \"company_code\": \"AIA\",\n    \"company_name\": \"American International Assurance Co., Ltd\",\n    \"insurer_id\": \"INS00001\",\n    \"title\": \"Mr.\",\n    \"first_name\": \"Somchai\",\n    \"last_name\": \"Sukjai\"\n  },\n  \"policies\": {\n    \"policy_id\": \"POL000009\",\n    \"plan_code\": \"AIA001\",\n    \"plan_name\": \"AIA Health Gold\",\n    \"policy_number\": \"AIA-TH-998821\"\n  },\n  \"benefits\": [\n    {\n      \"benefit_code\": \"IPD\",\n      \"benefit_name\": \"Room and Board\"\n    }\n  ],\n  \"attending_physician\": {\n    \"physician_id\": \"DR001\",\n    \"physician_title\": \"Dr.\",\n    \"physician_firstname\": \"Anan\",\n    \"physician_lastName\": \"Prasert\",\n    \"medical_license_no\": \"MD-11111\"\n  },\n  \"admission\": {\n    \"admission_number\": \"AN2026110009\",\n    \"ward_number\": \"WARD-03\",\n    \"ward_type\": \"Medical Ward\",\n    \"room_type\": \"Private Room\",\n    \"bed_no\": \"C01\",\n    \"estimated_admission_date\": \"2026-11-01\",\n    \"estimated_lengthofstay\": \"3\",\n    \"estimated_cost\": \"75000.00\"\n  },\n  \"submit_date\": \"2026-11-01 09:00:00\",\n  \"update_date\": \"2026-11-01 09:00:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Hits the ORIGINAL stack at /api/d1, which is unchanged and still serves all nineteen endpoints through D1.Production. Needs the production running and the mock HIS reachable. age arrives unquoted and estimated_cost quoted, exactly as the spec's samples send them; the route coerces both before import."
+          }
+        },
+        {
+          "name": "Post PreAuth - body must be a JSON object",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 400', () => pm.response.to.have.status(400));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 400', () => pm.expect(b.response_code).to.eql('400'));",
+                  "pm.test('carries a message', () => pm.expect(b.response_message).to.be.a('string').and.not.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{prodApi}}/preauth",
+              "host": [
+                "{{prodApi}}"
+              ],
+              "path": [
+                "preauth"
+              ]
+            },
+            "description": "Hits the ORIGINAL stack at /api/d1, which is unchanged and still serves all nineteen endpoints through D1.Production. Needs the production running and the mock HIS reachable."
+          }
+        },
+        {
+          "name": "Post Discharge",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('response_code is 200', () => pm.expect(b.response_code).to.eql('200'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{prodApi}}/discharge",
+              "host": [
+                "{{prodApi}}"
+              ],
+              "path": [
+                "discharge"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"crud_status\": \"0\",\n  \"claim_id\": \"REQ0000POST1\",\n  \"claim_case_number\": \"PA-2026-110099\",\n  \"claim_status\": \"Discharge Requested\",\n  \"claim_person\": {\n    \"hospital_number\": \"HN000009\",\n    \"citizen_id\": \"1103701234999\",\n    \"passport_id\": \"\",\n    \"title\": \"Mr.\",\n    \"first_name\": \"Postman\",\n    \"last_name\": \"Tester\",\n    \"gender\": \"male\",\n    \"birth_date\": \"1990-01-01\",\n    \"address\": \"1 Test Road, Bangkok\",\n    \"phone_number\": \"0800000000\"\n  },\n  \"admission_info\": {\n    \"admission_number\": \"AN2026110009\",\n    \"admission_date\": \"2026-11-01\",\n    \"ward_number\": \"WARD-03\",\n    \"ward_type\": \"Medical Ward\",\n    \"room_type\": \"Private Room\",\n    \"bed_no\": \"C01\",\n    \"expected_discharge_date\": \"2026-11-04\",\n    \"actual_discharge_date\": \"2026-11-04\"\n  },\n  \"insurer\": {\n    \"company_code\": \"AIA\",\n    \"company_name\": \"American International Assurance Co., Ltd\"\n  },\n  \"policies_info\": {\n    \"policy_id\": \"POL000009\",\n    \"plan_code\": \"AIA001\",\n    \"plan_name\": \"AIA Health Gold\",\n    \"policy_number\": \"AIA-TH-998821\",\n    \"policy_type\": \"IPD\"\n  },\n  \"diagnosis_info\": [\n    {\n      \"diagnosis_type\": \"PRIMARY\",\n      \"diagnosis_code\": \"I20.9\",\n      \"diagnosis_name\": \"Angina pectoris, unspecified\"\n    }\n  ],\n  \"attending_physician\": {\n    \"physician_id\": \"DR001\",\n    \"physician_title\": \"Dr.\",\n    \"physician_firstname\": \"Anan\",\n    \"physician_lastName\": \"Prasert\",\n    \"medical_license_no\": \"MD-11111\"\n  },\n  \"billing_info\": {\n    \"currency\": \"THB\",\n    \"total_charge\": \"75,000.00\",\n    \"discount_amount\": \"0.00\",\n    \"net_charge\": \"75,000.00\",\n    \"patient_payable\": \"1,000.00\",\n    \"insurance_payable\": \"74,000.00\"\n  },\n  \"source_info\": [\n    {\n      \"source_id\": \"SRC009\",\n      \"source_name\": \"discharge-summary.pdf\",\n      \"source_type\": \"pdf\",\n      \"source_url\": \"https://example.invalid/SRC009.pdf\"\n    }\n  ],\n  \"remark\": \"Postman suite\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Hits the ORIGINAL stack at /api/d1, which is unchanged and still serves all nineteen endpoints through D1.Production. Needs the production running and the mock HIS reachable. Billing amounts are quoted and comma-separated on purpose -- unconverted they abort the whole %JSONImport."
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -7,6 +7,9 @@ Include %occStatus
 ///   Run()    owns the logic and takes a message object, so %UnitTest can
 ///            exercise it without a web request (and without a production).
 ///
+/// D1.REST.Test is that test -- the seam is not speculative, it is the only
+/// way to check this code without standing up a web application first.
+///
 /// These endpoints answer straight from IRIS's own tables -- no business
 /// process to orchestrate, nothing to route, and no outbound call needing a
 /// configured adapter -- hence no production, no business service and no
